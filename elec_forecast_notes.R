@@ -40,7 +40,11 @@ sd(X_bar) # 0.0156 or 1.6%
 # plot histogram to check if distribution is normal
 hist(X_bar) # appears to be normal distribution
 
-# p <- 0.45
-# N <- 1000
-# X <- sample(c(0,1), size = N, replace = TRUE, prob = c(1-p,p))
-# X_bar <- mean(X)
+
+## why not run a very large poll - e.g. size 100000
+N <- 100000
+p <- seq(0.35, 0.65, length = 100)
+SE <- sapply(p, function(x) 2*sqrt(x*(1-x)/N))
+data.frame(p=p, SE=SE) %>% ggplot(aes(p, SE)) +
+  geom_line()
+
