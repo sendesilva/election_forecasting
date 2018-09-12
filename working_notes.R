@@ -311,3 +311,153 @@ test[outcome=="Healthy"] <- sample(c("-", "+"), N_H, replace = TRUE, prob = c(ac
 
 table(outcome, test)
 
+### Election Forecasting
+# Compute posterior distribution for spread d to report probablity > 0 given observed poll data.
+mu <- 0 # expected value
+tau <- 0.035 # based of past observed data
+sigma <- results$se
+Y <- results$avg
+B <- sigma^2 / (sigma^2 + tau^2)
+
+posterior_mean <- B*mu + (1-B)*Y
+posterior_se <- sqrt(1/ (1/sigma^2 + 1/tau^2))
+
+posterior_mean # 0.02808534
+posterior_se # 0.006149604
+
+# credible interval
+posterior_mean + c(-1.96, 1.96)*posterior_se
+
+# probability of spread being > 0
+1 - pnorm(0, posterior_mean, posterior_se) # 0.9999975
+
+# simulating 6 data points for polls with N = 2000 and d = .021
+J <- 6
+N <- 2000
+d <- 0.21
+p <- (d+1)/2 # prob of clinton success over trum d = clin - trum
+X <- d + rnorm(J, 0, 2*sqrt(p*(1-p)/N))
+
+# simulating data points J polls carried out by I pollsters 
+I <- 5
+J <- 6
+N <- 2000
+d <- 0.21
+p <- (d+1)/2 # prob of clinton success over trum d = clin - trum
+X <- sapply(1:I, function(i){
+  d + rnorm(J, 0, 2*sqrt(p*(1-p)/N))
+ })
+
+datx <- stack(as.data.frame(X))
+head(datx)
+
+ggplot(datx, aes(x = ind, y = values)) + geom_point()
+
+# adding house effect for pollster variability 
+I <- 5
+J <- 6
+N <- 2000
+d <- 0.21
+p <- (d+1)/2 # emulate prob of clinton success over trum d = clin - trum
+h <- rnorm(I, 0, 0.025)
+X <- sapply(1:I, function(i){
+  d + h[i] + rnorm(J, 0, 2*sqrt(p*(1-p)/N))
+})
+
+# adding general bias b = 0.025
+mu <- 0 # expected value
+tau <- 0.035 # based of past observed data
+sigma <- sqrt(results$se^2 + 0.025^2)
+Y <- results$avg
+B <- sigma^2 / (sigma^2 + tau^2)
+
+posterior_mean <- B*mu + (1-B)*Y
+posterior_se <- sqrt(1/ (1/sigma^2 + 1/tau^2))
+
+# probability of spread being > 0
+1 - pnorm(0, posterior_mean, posterior_se) # 0.8174373
+
+## predicting the Electoral College
+results_us_election_2016 %>% arrange(desc(electoral_votes)) %>% top_n(5, electoral_votes)
+
+results <- polls_us_election_2016 %>%
+  filter(state != "U.S." &
+           !grepl("CD", state) &
+           enddate >= "2016-10-31" &
+           (grade %in% c("A+", "A", "A-", "B+") | is.na(grade))) %>%
+  mutate(spread = rawpoll_clinton/100 - rawpoll_trump/100) %>%
+  group_by(state) %>%
+  summarise(avg = mean(spread), sd = sd(spread), n = n()) %>%
+  mutate(state = as.character(state))
+
+results %>% arrange(abs(avg))
+
+str(results)
+# left_join results / results_us_election
+results <- left_join(results, results_us_election_2016, by = "state")
+str(results)
+
+# no polls in flwg states
+results_us_election_2016 %>% filter(!state %in% results$state)
+
+# adding std deviation to the states where reqd
+results <- results %>%
+  mutate(sd = ifelse(is.na(sd), median(results$sd, na.rm = TRUE), sd))
+str(results)
+
+# Monte Carlo sim using Bayesian calculation with tau = 0.02
+mu <- 0
+tau <- 0.02
+results %>% mutate(sigma = sd/sqrt(n),
+                   B = sigma^2 / (sd^2 + tau^2),
+                   posterior_mean = B*mu + (1-B)*avg,
+                   posterior_se = sqrt( 1/(1/sigma^2 + 1/tau^2))) %>%
+  arrange(abs(posterior_mean))
+str(results)
+
+# plotting posterior_mean vs avg
+
+results %>% mutate(sigma = sd/sqrt(n), 
+                   B = sigma^2 / (sigma^2 + tau^2),
+                   posterior_mean = B*mu + (1-B)*avg,
+                   posterior_se = sqrt( 1/ (1/sigma^2 + 1/tau^2))) %>%
+  ggplot(aes(avg, posterior_mean, size = n)) + geom_point() + 
+  geom_abline(slope = 1, intercept = 0)
+
+# repeat 10000 times and only keep Clinton electoral votes; 
+# add 7 for Rhodes and DC which have no polls but clinton is usre to win
+mu <- 0
+tau <- 0.02
+clinton_EV <- replicate(1000, {
+  results %>% mutate(sigma = sd/sqrt(n), 
+                     B = sigma^2 / (sigma^2 + tau^2),
+                     posterior_mean = B*mu + (1-B)*avg,
+                     posterior_se = sqrt( 1/ (1/sigma^2 + 1/tau^2)),
+                     simulated_result = rnorm(length(posterior_mean), posterior_mean, posterior_se),
+                     clinton = ifelse(simulated_result>0, electoral_votes, 0)) %>% 
+    summarize(clinton = sum(clinton)) %>% 
+    .$clinton + 7## 7 for Rhode Island and D.C.
+})
+mean(clinton_EV>269) # 0.999
+
+# histogram
+data.frame(clinton_EV) %>%
+  ggplot(aes(clinton_EV)) +
+  geom_histogram(binwidth = 1) +
+  geom_vline(xintercept = 269)
+
+# modifying bias to reflect larger bias at state level
+mu <- 0
+tau <- 0.02
+bias_sd <- 0.03
+clinton_EV <- replicate(1000, {
+  results %>% mutate(sigma = sqrt(sd^2/n + bias_sd^2), 
+                     B = sigma^2 / (sigma^2 + tau^2),
+                     posterior_mean = B*mu + (1-B)*avg,
+                     posterior_se = sqrt( 1/ (1/sigma^2 + 1/tau^2)),
+                     simulated_result = rnorm(length(posterior_mean), posterior_mean, posterior_se),
+                     clinton = ifelse(simulated_result>0, electoral_votes, 0)) %>% 
+    summarize(clinton = sum(clinton)) %>% 
+    .$clinton + 7## 7 for Rhode Island and D.C.
+})
+mean(clinton_EV>269) # 0.835
