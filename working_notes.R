@@ -311,6 +311,8 @@ test[outcome=="Healthy"] <- sample(c("-", "+"), N_H, replace = TRUE, prob = c(ac
 
 table(outcome, test)
 
+
+
 ### Election Forecasting
 # Compute posterior distribution for spread d to report probablity > 0 given observed poll data.
 mu <- 0 # expected value
@@ -461,3 +463,47 @@ clinton_EV <- replicate(1000, {
     .$clinton + 7## 7 for Rhode Island and D.C.
 })
 mean(clinton_EV>269) # 0.835
+
+
+## Forecasting
+# investigating effect of time on polls results 
+# to remove pollster variability only data from only 1 pollster - ipsos - is used
+one_pollster <- polls_us_election_2016 %>%
+  filter(pollster == "Ipsos" & state == "U.S.") %>%
+  mutate(spread = rawpoll_clinton/100 - rawpoll_trump/100)
+
+# comparing theoretical std error with data-driven sd
+se <- one_pollster %>%
+  summarise(empirical = sd(spread),
+            theoretical = 2*sqrt(mean(spread)*(1-mean(spread))/min(samplesize)))
+se
+
+one_pollster %>% ggplot(aes(spread)) + 
+  geom_histogram(binwidth = 0.01, color = "black") # spread does not appear normally distributed
+
+# pollster vs time
+polls_us_election_2016 %>%
+  filter(state == "U.S." & enddate>="2016-07-01") %>%
+  group_by(pollster) %>%
+  filter(n()>=10) %>%
+  ungroup() %>%
+  mutate(spread = rawpoll_clinton/100 - rawpoll_trump/100) %>%
+  ggplot(aes(enddate, spread)) + 
+  geom_smooth(method = "loess", span = 0.1) + 
+  geom_point(aes(color=pollster), show.legend = FALSE, alpha=0.6) 
+
+# plotting candidate trendlines
+polls_us_election_2016 %>%
+  filter(state == "U.S." & enddate>="2016-07-01") %>%
+  select(enddate, pollster, rawpoll_clinton, rawpoll_trump) %>%
+  rename(Clinton = rawpoll_clinton, Trump = rawpoll_trump) %>%
+  gather(candidate, percentage, -enddate, -pollster) %>% 
+  mutate(candidate = factor(candidate, levels = c("Trump","Clinton")))%>%
+  group_by(pollster) %>%
+  filter(n()>=10) %>%
+  ungroup() %>%
+  ggplot(aes(enddate, percentage, color = candidate)) +  
+  geom_point(show.legend = FALSE, alpha=0.4)  + 
+  geom_smooth(method = "loess", span = 0.15) +
+  scale_y_continuous(limits = c(30,50))
+
