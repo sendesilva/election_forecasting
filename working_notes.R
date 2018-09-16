@@ -507,3 +507,79 @@ polls_us_election_2016 %>%
   geom_smooth(method = "loess", span = 0.15) +
   scale_y_continuous(limits = c(30,50))
 
+
+### t-distirbution
+# for 95% CI change 1.96 to a quantile coming from prob 0.975 in a t-distribution 
+# for 14 degrees of freedom (nrows - 1)
+z <- qt(0.975, nrow(one_poll_per_pollster)-1)
+one_poll_per_pollster %>%
+  summarise(avg = mean(spread), moe = z*sd(spread)/sqrt(length(spread))) %>%
+  mutate(start = avg - moe, end = avg + moe)
+
+# quantile for t-dist vs normal-dist
+qt(0.975, 14) # 2.144787
+qnorm(0.975) #  1.959964
+
+
+
+### Association Tests
+# funding research study
+totals <- research_funding_rates %>%
+  select(-discipline) %>%
+  summarise_all(funs(sum)) %>%
+  summarise(yes_men = awards_men,
+            no_men = applications_men - awards_men,
+            yes_women = awards_women,
+            no_women = applications_women - awards_women)
+
+totals %>% summarise(percent_men = yes_men/(yes_men+no_men),
+                     percent_women = yes_women/(yes_women+no_women))
+
+# O/A funding rate
+funding_rate <- totals %>%
+  summarise(percent_total =
+              (yes_men + yes_women)/
+              (yes_men + no_men + yes_women + no_women)) %>%
+  .$percent_total
+funding_rate # 0.165
+
+# 2X2 table of actual funding
+two_by_two <- tibble(awarded = c("no", "yes"),
+                     men = c(totals$no_men, totals$yes_men),
+                     women = c(totals$no_women, totals$yes_women))
+two_by_two
+
+# 2X2 table of expected funding if random
+tibble(awarded = c("no", "yes"),
+       men = (totals$no_men + totals$yes_men)*
+         c(1 - funding_rate, funding_rate),
+       women = (totals$no_women + totals$yes_women)*
+         c(1 - funding_rate, funding_rate))
+
+# Chi-Squared test
+two_by_two %>%
+  select(-awarded) %>%
+  chisq.test()
+
+# odds of getting funded if man and wpmen = prob of getting funded / prob of not getting funded
+odds_men <- (two_by_two$men[2] / sum(two_by_two$men)) / 
+  (two_by_two$men[1] / sum(two_by_two$men))
+
+odds_women <- (two_by_two$women[2] / sum(two_by_two$women)) / 
+  (two_by_two$women[1] / sum(two_by_two$women))
+
+odds_men/odds_women  # 1.23
+
+# note effect of sample size of p-value with unchanged odd ratio
+two_by_two %>%
+  select(-awarded) %>%
+  mutate(men = men*10, women = women*10) %>%
+  chisq.test()
+
+# Tea Lady test matrix
+tab <- matrix(c(3,1,1,3),2,2)
+rownames(tab) <- c("Poured Before", "Poured After")
+colnames(tab) <- c("Guessed before", "Guessed after")
+tab
+
+fisher.test(tab, alternative="greater")

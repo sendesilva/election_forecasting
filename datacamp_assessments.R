@@ -160,3 +160,65 @@ errors %>% filter(grade %in% c("B+", "A-", "A", "A+")) %>%
   mutate(state = reorder(state, error)) %>% ggplot(aes(x=state, y=error)) +
   geom_boxplot() +
   geom_point()
+
+
+### A6.2
+# Ex1 Exercise 1 - Using the t-Distribution: # We know that, with a normal distribution, 
+# only 5% of values are more than 2 standard deviations away from the mean. Calculate the 
+# probability of seeing t-distributed random variables being more than 2 in absolute value 
+# when the degrees of freedom are 3.
+
+qnorm(0.975) # 1.96 or approx 2 sd
+qt(0.975, df=14) # 2.144
+1 - pnorm(2) + pnorm(-2) # 0.0455
+
+1- pt(2, df=3) + pt(-2, df=3) # same as for pnorm > 1 - pt + pr = 0.14
+
+# Ex2
+# Generate a vector 'df' that contains a sequence of numbers from 3 to 50
+df <- seq(3,50, by = 1)
+
+# Make a function called 'pt_func' that calculates the probability that a value is more than |2| for any degrees of freedom 
+pt_func <- function(df) 1 - pt(2, df) + pt(-2, df)
+  
+  # Generate a vector 'probs' that uses the `pt_func` function to calculate the probabilities
+probs <- sapply(df, pt_func)
+
+# Plot 'df' on the x-axis and 'probs' on the y-axis
+plot(probs, df)
+
+# Ex3
+# Load the neccessary libraries and data
+library(dslabs)
+library(dplyr)
+data(heights)
+
+# Use the sample code to generate 'x', a vector of male heights
+x <- heights %>% filter(sex == "Male") %>%
+  .$height
+
+# Create variables for the mean height 'mu', the sample size 'N', and the number of times the simulation should run 'B'
+mu <- mean(x)
+N <- 15
+B <- 10000
+
+# Use the `set.seed` function to make sure your answer matches the expected result after random sampling
+set.seed(1)
+
+# Generate a logical vector 'res' that contains the results of the simulations
+res <- replicate(B, {
+  X <- sample(x, size = N, replace = TRUE)
+  interval <- c(mean(X) - qnorm(0.975)*sd(X)/sqrt(N), mean(X) + qnorm(0.975)*sd(X)/sqrt(N))
+  between(mu,interval[1], interval[2])
+})
+mean(res)
+
+# Ex.4 - repeat Ex3 using t-dist
+res <- replicate(B, {
+  X <- sample(x, size = N, replace = TRUE)
+  interval <- c(mean(X) - qt(0.975, df = N-1)*sd(X)/sqrt(N), mean(X) + qt(0.975, df = N-1)*sd(X)/sqrt(N))
+  between(mu,interval[1], interval[2])
+})
+mean(res)
+
+
